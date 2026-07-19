@@ -1,0 +1,14 @@
+services:
+  fociz:
+    build: .
+    container_name: fociz
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./fociz.html:/app/fociz.html:ro
+    environment:
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - MAIL_FROM=${MAIL_FROM:-Fociz <onboarding@resend.dev>}
+      - FRONT_URL=${FRONT_URL:-}
