@@ -91,8 +91,140 @@ function parEmail(email){
 const fiche = j => ({ pseudo:j.pseudo, tete:j.tete, arbres:j.arbres||0, serie:j.serie||0,
   minutes:j.minutes||0, xp:j.xp||0, achetes:j.achetes||[] });
 
+/* ---------- sessions de groupe (éphémères, en mémoire — pas dans le fichier JSON) ---------- */
+const sessions = {};   // code -> { hote, hoteJeton, minutes, maxParticipants, participants:{jeton:{pseudo,tete}}, demarree, demarreeA, creeLe }
+const ALPHABET_CODE = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // sans 0/O/1/I/L, pour éviter la confusion
+
+function nouveauCode(){
+  let code;
+  do{
+    code = Array.from({length:5}, () => ALPHABET_CODE[Math.floor(Math.random()*ALPHABET_CODE.length)]).join('');
+  } while(sessions[code]);
+  return code;
+}
+function sessionFiche(s, code){
+  // volontairement : juste le nombre de participants, jamais la liste de leurs pseudos
+  return { code, hote:s.hote, minutes:s.minutes, maxParticipants:s.maxParticipants,
+    nombre:Object.keys(s.participants).length, demarree:s.demarree, demarreeA:s.demarreeA };
+}
+setInterval(() => {                                        // ménage : sessions de plus de 3h
+  const seuil = Date.now() - 3*60*60*1000;
+  for(const c in sessions){ if(sessions[c].creeLe < seuil) delete sessions[c]; }
+}, 30*60*1000);
+
+/* ---------- présence (compteur global, anonyme — pas de pseudo, pas de compte requis) ---------- */
+const presences = {};   // id anonyme -> { vu, enSession }
+setInterval(() => {                                        // ménage : plus vu depuis 5 min
+  const seuil = Date.now() - 5*60*1000;
+  for(const id in presences){ if(presences[id].vu < seuil) delete presences[id]; }
+}, 60*1000);
+
 /* ---------- routes ---------- */
 const routes = {
+
+  async sessionCreer({ jeton, minutes, maxParticipants }){
+    const j = parJeton(jeton);
+    if(!j) throw 'Connecte-toi d\'abord.';
+    minutes = Math.max(1, Math.min(180, parseInt(minutes)||45));
+    maxParticipants = Math.max(2, Math.min(30, parseInt(maxParticipants)||10));
+    const code = nouveauCode();
+    sessions[code] = { hote:j.pseudo, hoteJeton:jeton, minutes, maxParticipants,
+      participants:{ [jeton]:{ pseudo:j.pseudo, tete:j.tete } }, demarree:false, demarreeA:null, creeLe:Date.now() };
+    return sessionFiche(sessions[code], code);
+  },
+
+  async sessionRejoindre({ jeton, code }){
+    const j = parJeton(jeton);
+    if(!j) throw 'Connecte-toi d\'abord.';
+    code = String(code||'').trim().toUpperCase();
+    const s = sessions[code];
+    if(!s) throw 'Code inconnu.';
+    if(s.demarree) throw 'Cette session a déjà démarré.';
+    const deja = s.participants[jeton];
+    if(!deja && Object.keys(s.participants).length >= s.maxParticipants) throw 'Session complète.';
+    s.participants[jeton] = { pseudo:j.pseudo, tete:j.tete };
+    return sessionFiche(s, code);
+  },
+
+  async sessionEtat({ code }){
+    code = String(code||'').trim().toUpperCase();
+    const s = sessions[code];
+    if(!s) throw 'Code inconnu.';
+    return sessionFiche(s, code);
+  },
+
+  async sessionDemarrer({ jeton, code }){
+    code = String(code||'').trim().toUpperCase();
+    const s = sessions[code];
+    if(!s) throw 'Code inconnu.';
+    if(s.hoteJeton !== jeton) throw 'Seul l\'hôte peut démarrer.';
+    if(!s.demarree){ s.demarree = true; s.demarreeA = Date.now(); }
+    return sessionFiche(s, code);
+  },
+
+  async sessionQuitter({ jeton, code }){
+    code = String(code||'').trim().toUpperCase();
+    const s = sessions[code];
+    if(s) delete s.participants[jeton];
+    return { ok:true };
+  },
+
+  async presence({ id, enSession }){
+    id = String(id||'').slice(0,64);
+    if(!id) throw 'id manquant';
+    presences[id] = { vu: Date.now(), enSession: !!enSession };
+    const seuil = Date.now() - 90*1000;   // "en ligne" = vu dans les 90 dernières secondes
+    let enLigne=0, enSess=0;
+    for(const k in presences){
+      if(presences[k].vu >= seuil){ enLigne++; if(presences[k].enSession) enSess++; }
+    }
+    return { enLigne, enSession: enSess };
+  },
+
+  async profilModifier({ jeton, pseudo, email, tete }){
+    const j = parJeton(jeton);
+    if(!j) throw 'Connecte-toi d\'abord.';
+    const ancienneCle = cle(j.pseudo);
+
+    if(pseudo !== undefined && String(pseudo||'').trim() !== ''){
+      pseudo = String(pseudo).trim();
+      if(pseudo.length < 3)  throw 'Pseudo trop court (3 caractères minimum).';
+      if(pseudo.length > 16) throw 'Pseudo trop long (16 caractères maximum).';
+      const nouvelleCle = cle(pseudo);
+      if(!nouvelleCle) throw 'Pseudo invalide.';
+      if(nouvelleCle !== ancienneCle){
+        if(base.joueurs[nouvelleCle]) throw 'Ce pseudo est déjà pris.';
+        delete base.joueurs[ancienneCle];
+        base.joueurs[nouvelleCle] = j;
+      }
+      j.pseudo = pseudo;
+    }
+
+    if(email !== undefined && String(email||'').trim() !== ''){
+      email = String(email).trim();
+      if(!emailValide(email)) throw 'Adresse email invalide.';
+      const existant = parEmail(email);
+      if(existant && existant !== j) throw 'Un compte existe déjà avec cet email.';
+      j.email = email;
+    }
+
+    if(tete) j.tete = tete;
+
+    enregistrer();
+    return { joueur: fiche(j) };
+  },
+
+  async mdpModifier({ jeton, ancien, nouveau }){
+    const j = parJeton(jeton);
+    if(!j) throw 'Connecte-toi d\'abord.';
+    if(hacher(String(ancien||''), j.sel) !== j.hash) throw 'Mot de passe actuel incorrect.';
+    if(String(nouveau||'').length < 6) throw 'Nouveau mot de passe trop court (6 caractères minimum).';
+    const sel = crypto.randomBytes(16).toString('hex');
+    j.sel = sel;
+    j.hash = hacher(nouveau, sel);
+    enregistrer();
+    return { ok:true };
+  },
 
   async inscription({ pseudo, email, mdp, tete }){
     pseudo = String(pseudo||'').trim();
