@@ -157,9 +157,36 @@
   .dots i{width:5px;height:5px;border-radius:50%;background:var(--line);display:block}
 
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition-duration:.01ms!important}}
+
+  /* ---- écran d'accueil ---- */
+  .intro{position:fixed;inset:0;z-index:40;background:var(--paper);
+    display:flex;align-items:center;justify-content:center;padding:32px 24px}
+  .intro-inner{max-width:380px;text-align:center}
+  .intro-brand{font-family:'Baloo 2',sans-serif;font-weight:800;font-size:30px;margin-bottom:6px}
+  .intro-brand span{color:var(--leaf)}
+  .intro-tree{font-size:52px;margin:10px 0 22px}
+  .intro-texte{font-size:14.5px;line-height:1.6;color:var(--ink);margin:0 0 16px}
+  .intro .btn{margin-top:10px;width:100%}
 </style>
 </head>
 <body>
+<div class="intro" id="intro">
+  <div class="intro-inner">
+    <div class="intro-brand">Foci<span>z</span></div>
+    <div class="intro-tree">🌳</div>
+    <p class="intro-texte">
+      Fociz est un minuteur de concentration. Tu choisis une durée, tu lances
+      la séance, et un arbre pousse pendant que tu restes concentré — si tu
+      quittes la page trop longtemps, il fane et la séance ne compte pas.
+    </p>
+    <p class="intro-texte">
+      Reste au moins 30 minutes sur une séance pour planter un arbre. Plus tu
+      es régulier, plus tu débloques de nouveaux arbres.
+    </p>
+    <button class="btn green" id="introEntrer">Entrer</button>
+  </div>
+</div>
+
 <div class="wrap">
   <div class="top">
     <div class="brand">Foci<span>z</span></div>
@@ -336,11 +363,8 @@ const DB=(()=>{
   };
 })();
 
-/* ===== adresse du serveur — c'est la MÊME adresse que le site =====
-   une fois hébergé sur le serveur de la famille, par ex. :
-   const API = "https://fociz.mondomaine.fr";
-   si on laisse vide, tout reste enregistré dans le navigateur.        */
-const API = "https://fociz.twinlac.com"
+/* ===== adresse du serveur — c'est la MÊME adresse que le site ===== */
+const API = "https://fociz.twinlac.com";
 let jeton = null;
 
 async function api(route, corps){
@@ -815,6 +839,11 @@ document.getElementById('resetValider').onclick=async()=>{
     history.replaceState(null,'',location.pathname);   // enlève ?reset=... de l'adresse
     say('Mot de passe changé. Te revoilà, '+profile.name); setTimeout(hush,2600);
   }catch(e){ direReset(e.message,'err'); }
+};
+
+/* ================= écran d'accueil ================= */
+document.getElementById('introEntrer').onclick=()=>{
+  document.getElementById('intro').style.display='none';
 };
 
 /* ================= démarrage ================= */
