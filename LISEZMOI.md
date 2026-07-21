@@ -115,3 +115,4 @@ Fociz vise des collégiens/lycéens. Collecter leur email est une donnée
 personnelle de mineur — en France le RGPD demande l'accord d'un parent pour
 les moins de 15 ans. Rien d'automatisé ici pour ça ; à garder en tête si le
 site sort du cercle familial/amical.
+polo
