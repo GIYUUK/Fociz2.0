@@ -31,6 +31,11 @@
   .icon-btn:hover{border-color:var(--leaf)}
 
   /* ---- parcelle ---- */
+  .code-actif{display:block;margin:0 auto 16px;background:var(--card);border:1.5px solid var(--line);
+    border-radius:99px;padding:8px 18px;font-family:'DM Mono',monospace;font-size:14px;letter-spacing:.2em;
+    color:var(--leaf-dark);cursor:pointer;text-align:center}
+  .code-actif:hover{border-color:var(--leaf)}
+
   .plot{position:relative;border-radius:24px;overflow:hidden;border:1.5px solid var(--line);
     margin-bottom:22px;transition:filter .9s ease,background .8s ease}
   .plot.wilting{filter:saturate(.3) sepia(.3)}
@@ -228,6 +233,8 @@
       <button class="icon-btn" id="avatarBtn" title="Ton compte">👤</button>
     </div>
   </div>
+
+  <button class="code-actif" id="codeActif" hidden></button>
 
   <div class="plot" id="plot">
     <svg id="tree" viewBox="0 0 400 330" role="img" aria-label="Ton arbre pousse pendant la séance"></svg>
@@ -824,6 +831,7 @@ function tick(){
 }
 function finish(){
   cancelAnimationFrame(session.raf); draw(1); setClock(0);
+  if(sCodeActif){ api('sessionQuitter',{jeton,code:sCodeActif}).catch(()=>{}); sCodeActif=null; majBadgeCode(); }
   const done=minutes; session=null; reset(false); canopy.classList.add('sway');
   const avant=SKINS.filter(debloque).length;
   const today=dayKey(), yest=dayKey(new Date(Date.now()-864e5));
@@ -854,6 +862,7 @@ function finish(){
 }
 function fail(msg){
   if(session){cancelAnimationFrame(session.raf);session=null;}
+  if(sCodeActif){ api('sessionQuitter',{jeton,code:sCodeActif}).catch(()=>{}); sCodeActif=null; majBadgeCode(); }
   wilt(); reset(true);
   say(msg,true); subEl.textContent='Séance non comptée.';
   setClock(minutes*60000); clockEl.classList.remove('paused');
@@ -1043,11 +1052,27 @@ function majStatSite(){
 const veilSession=document.getElementById('veilSession');
 const sessionAccueil=document.getElementById('sessionAccueil');
 const sessionSalon=document.getElementById('sessionSalon');
-let sInfo=null;      // { code, hote:bool }
-let sMinuteur=null;  // handle du polling
+let sInfo=null;        // { code, hote:bool } — tant qu'on est dans la salle d'attente
+let sCodeActif=null;   // code de la session en cours, une fois le minuteur lancé
+let sMinuteur=null;    // handle du polling
 
 function sDire(t,type){ const m=document.getElementById('sMsg'); m.textContent=t||''; m.className='msg '+(type||''); }
 function sDireSalon(t,type){ const m=document.getElementById('sSalonMsg'); m.textContent=t||''; m.className='msg '+(type||''); }
+
+function majBadgeCode(){
+  const el=document.getElementById('codeActif');
+  if(sCodeActif){ el.hidden=false; el.textContent='👥 '+sCodeActif; }
+  else{ el.hidden=true; }
+}
+document.getElementById('codeActif').onclick=()=>{
+  if(!sCodeActif) return;
+  veilSession.classList.add('open');
+  sessionAccueil.hidden=true; sessionSalon.hidden=false;
+  document.getElementById('sCodeAffiche').textContent=sCodeActif;
+  document.getElementById('sCompteur').textContent='Séance en cours';
+  document.getElementById('sDemarrerBtn').hidden=true;
+  sDireSalon('Partage ce code pour que d\'autres vous rejoignent.');
+};
 
 document.getElementById('sessionBtn').onclick=async()=>{
   if(!API){
@@ -1058,14 +1083,16 @@ document.getElementById('sessionBtn').onclick=async()=>{
     document.getElementById('avatarBtn').click();
     return;
   }
+  if(sCodeActif){ document.getElementById('codeActif').click(); return; }
   veilSession.classList.add('open');
   if(!sInfo){ sessionAccueil.hidden=false; sessionSalon.hidden=true; sDire(''); }
   majStatSite(); battementCoeur();   // rafraîchit le compteur au moment où on regarde
 };
 document.getElementById('closeSession').onclick=()=>veilSession.classList.remove('open');
 document.getElementById('sQuitterBtn').onclick=async()=>{
-  if(sInfo){ try{ await api('sessionQuitter',{jeton, code:sInfo.code}); }catch(e){} }
-  arreterPolling(); sInfo=null;
+  const code=sInfo?sInfo.code:sCodeActif;
+  if(code){ try{ await api('sessionQuitter',{jeton, code}); }catch(e){} }
+  arreterPolling(); sInfo=null; sCodeActif=null; majBadgeCode();
   sessionAccueil.hidden=false; sessionSalon.hidden=true;
   veilSession.classList.remove('open');
 };
@@ -1082,6 +1109,16 @@ function afficherSalon(etat){
 
 function arreterPolling(){ if(sMinuteur){ clearInterval(sMinuteur); sMinuteur=null; } }
 
+// démarre le minuteur synchronisé avec le reste du groupe (première connexion ou rejoint en cours)
+function demarrerSessionGroupe(etat, code){
+  arreterPolling();
+  veilSession.classList.remove('open');
+  minutes=etat.minutes;
+  setClock(minutes*60000); majRegle();
+  sInfo=null; sCodeActif=code; majBadgeCode();
+  if(!session) start(etat.demarreeA+minutes*60000);
+}
+
 function demarrerPolling(){
   arreterPolling();
   sMinuteur=setInterval(async()=>{
@@ -1089,14 +1126,7 @@ function demarrerPolling(){
     try{
       const etat=await api('sessionEtat',{code:sInfo.code});
       afficherSalon(etat);
-      if(etat.demarree){
-        arreterPolling();
-        veilSession.classList.remove('open');
-        minutes=etat.minutes;
-        setClock(minutes*60000); majRegle();
-        if(!session) start(etat.demarreeA+minutes*60000);
-        sInfo=null;
-      }
+      if(etat.demarree) demarrerSessionGroupe(etat, sInfo.code);
     }catch(e){ /* on retentera au prochain tour */ }
   }, 3000);
 }
@@ -1119,9 +1149,14 @@ document.getElementById('sRejoindreBtn').onclick=async()=>{
   sDire('Connexion…');
   try{
     const etat=await api('sessionRejoindre',{jeton, code});
-    sInfo={code, hote:(etat.hote===profile.name)};
-    afficherSalon(etat);
-    demarrerPolling();
+    if(etat.demarree){
+      demarrerSessionGroupe(etat, code);
+      say('Tu as rejoint une séance en cours 🌳'); setTimeout(hush,2400);
+    }else{
+      sInfo={code, hote:(etat.hote===profile.name)};
+      afficherSalon(etat);
+      demarrerPolling();
+    }
   }catch(e){ sDire(e.message,'err'); }
 };
 
