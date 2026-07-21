@@ -689,12 +689,16 @@ function paint(S){
 function draw(p){
   branches.forEach(b=>{
     const k=Math.max(0,Math.min(1,(p-b.t0)/Math.max(.001,b.t1-b.t0)));
+    if(b._k===k) return;
+    b._k=k;
     b.el.style.opacity = k>0 ? 1 : 0;
     b.el.setAttribute('stroke-dashoffset',(1-k).toFixed(3));
   });
   if(ombreEl) ombreEl.setAttribute('opacity', Math.min(1, p*2.2).toFixed(2));
   leaves.forEach(l=>{
     const k=p>=l.t?Math.min(1,(p-l.t)/.05):0;
+    if(l._k===k) return;
+    l._k=k;
     l.el.style.opacity=k; l.el.style.transform=`scale(${k.toFixed(2)})`;
   });
   blooms.forEach(b=>{b.el.style.opacity=p>.9?Math.min(1,(p-.9)/.1):0;});
@@ -783,7 +787,8 @@ function poserChiffre(c, v){
   c.val=v;
   c.ft.textContent=ancien; c.fb.textContent=v;
   c.ht.textContent=v;      c.hb.textContent=ancien;
-  c.el.classList.remove('go'); void c.el.offsetWidth; c.el.classList.add('go');
+  c.el.classList.remove('go');
+  requestAnimationFrame(()=>requestAnimationFrame(()=>c.el.classList.add('go')));
   clearTimeout(c.tid);
   c.tid=setTimeout(()=>{ c.hb.textContent=v; }, 560);
 }
@@ -800,8 +805,10 @@ function say(t,bad){toast.textContent=t;toast.classList.toggle('bad',!!bad);toas
 function hush(){toast.classList.remove('show');}
 
 function start(finImposee){
-  buildTree(Date.now()%99999);
-  const dur=minutes*60000; session={dur,end:finImposee||(Date.now()+dur),raf:null};
+  const maintenant=Date.now();
+  const fin=(typeof finImposee==='number' && !isNaN(finImposee)) ? finImposee : null;
+  const dur=minutes*60000; session={dur,end:fin||(maintenant+dur),raf:null};
+  buildTree(maintenant%99999);
   goBtn.hidden=true; stopBtn.hidden=false;
   document.querySelectorAll('.chip').forEach(c=>c.disabled=true); customIn.disabled=true;
   plot.classList.remove('wilting');
@@ -829,7 +836,6 @@ function finish(){
     stats.sessions+=1;
     stats.xp=(stats.xp||0) + done + (stats.streak>=3?15:0);
   }
-  render(); save();
   const apres=SKINS.filter(debloque);
   if(!compte){
     say(`${done} min`);
@@ -842,6 +848,9 @@ function finish(){
     say('🌳 Arbre planté');
     subEl.textContent='';
   }
+  // la grille des arbres et le chemin sont plus coûteux à reconstruire (images, DOM) :
+  // on les décale d'une frame pour que le rendu de fin de séance ne saccade pas
+  requestAnimationFrame(()=>{ render(); save(); });
 }
 function fail(msg){
   if(session){cancelAnimationFrame(session.raf);session=null;}
@@ -881,7 +890,7 @@ customIn.addEventListener('input',()=>{
   minutes=Math.max(1,Math.min(180,+customIn.value||1));
   setClock(minutes*60000); majRegle();
 });
-goBtn.addEventListener('click',start);
+goBtn.addEventListener('click',()=>start());
 stopBtn.addEventListener('click',()=>fail('Séance abandonnée.'));
 
 /* ================= compte ================= */
