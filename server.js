@@ -139,7 +139,6 @@ const routes = {
     code = String(code||'').trim().toUpperCase();
     const s = sessions[code];
     if(!s) throw 'Code inconnu.';
-    if(s.demarree) throw 'Cette session a déjà démarré.';
     const deja = s.participants[jeton];
     if(!deja && Object.keys(s.participants).length >= s.maxParticipants) throw 'Session complète.';
     s.participants[jeton] = { pseudo:j.pseudo, tete:j.tete };
