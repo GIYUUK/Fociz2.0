@@ -13,6 +13,7 @@ const FICHIER  = process.env.DATA_FILE || '/data/fociz.json';
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const MAIL_FROM = process.env.MAIL_FROM || 'Fociz <onboarding@resend.dev>';
 const FRONT_URL = process.env.FRONT_URL || '';   // ex: https://fociz.netlify.app
+const ADMIN_KEY = process.env.ADMIN_KEY || '';   // vide = page /admin désactivée
 
 /* ---------- base de données (un simple fichier JSON) ---------- */
 let base = { joueurs: {} };     // joueurs[cle] = {pseudo, sel, hash, tete, arbres, serie, minutes, amis[], jetons[]}
@@ -72,6 +73,13 @@ function hacher(mdp, sel){
   return crypto.scryptSync(mdp, sel, 32).toString('hex');
 }
 function nouveauJeton(){ return crypto.randomBytes(24).toString('hex'); }
+
+function cleAdminValide(cle){
+  if(!ADMIN_KEY) return false;
+  const a = Buffer.from(String(cle||''));
+  const b = Buffer.from(ADMIN_KEY);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 function parJeton(jeton){
   if(!jeton) return null;
@@ -332,6 +340,17 @@ const routes = {
     return { amis: j.amis };
   },
 
+  async adminComptes({ cle }){
+    if(!cleAdminValide(cle)) throw 'Accès refusé.';
+    const joueurs = Object.values(base.joueurs).map(j => ({
+      pseudo: j.pseudo, email: j.email||'', tete: j.tete,
+      arbres: j.arbres||0, serie: j.serie||0, minutes: j.minutes||0, xp: j.xp||0,
+      achetes: j.achetes||[], amis: j.amis||[], cree: j.cree||null
+    }));
+    joueurs.sort((a,b) => (b.cree||0) - (a.cree||0));
+    return { joueurs };
+  },
+
   async classement({ jeton }){
     const j = parJeton(jeton);
     if(!j) throw 'Session expirée, reconnecte-toi.';
@@ -347,6 +366,72 @@ const routes = {
 
 const SITE_FICHIER = process.env.SITE_FILE || path.join(__dirname, 'fociz.html');
 
+/* ---------- page /admin (liste des comptes, protégée par ADMIN_KEY) ---------- */
+const PAGE_ADMIN = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fociz — comptes</title>
+<style>
+  body{margin:0;padding:24px 16px 40px;background:#F3F1E6;color:#2E3A22;font-family:system-ui,sans-serif}
+  .wrap{max-width:760px;margin:0 auto}
+  h1{font-size:20px}
+  .barre{display:flex;gap:8px;margin-bottom:18px}
+  input{flex:1;padding:10px 12px;border-radius:10px;border:1.5px solid #E4E1D2;font-size:14px}
+  button{padding:10px 16px;border-radius:10px;border:none;background:#6B8F52;color:#fff;font-weight:600;cursor:pointer}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;border-radius:12px;overflow:hidden}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid #E4E1D2}
+  th{background:#EEF0E4}
+  .msg{font-size:13px;color:#B97452;margin-bottom:10px}
+  .compte{font-size:12.5px;color:#8A8F79;margin-bottom:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Comptes Fociz</h1>
+  <div class="barre">
+    <input type="password" id="cle" placeholder="Clé admin" autocomplete="off">
+    <button id="voir">Voir</button>
+  </div>
+  <div class="msg" id="msg"></div>
+  <div class="compte" id="compte"></div>
+  <table id="tab" hidden>
+    <thead><tr><th>Pseudo</th><th>Email</th><th>Arbres</th><th>Série</th><th>Minutes</th><th>XP</th><th>Créé le</th></tr></thead>
+    <tbody id="corps"></tbody>
+  </table>
+</div>
+<script>
+const cle=document.getElementById('cle'), msg=document.getElementById('msg'),
+      tab=document.getElementById('tab'), corps=document.getElementById('corps'),
+      compte=document.getElementById('compte');
+cle.value=sessionStorage.getItem('adminCle')||'';
+async function charger(){
+  msg.textContent=''; tab.hidden=true; corps.innerHTML=''; compte.textContent='';
+  try{
+    const r=await fetch('/api/adminComptes',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({cle:cle.value})});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.erreur||'Erreur');
+    sessionStorage.setItem('adminCle',cle.value);
+    compte.textContent=d.joueurs.length+' compte(s)';
+    d.joueurs.forEach(j=>{
+      const tr=document.createElement('tr');
+      const vals=[j.pseudo, j.email, j.arbres, j.serie, j.minutes, j.xp,
+        j.cree?new Date(j.cree).toLocaleDateString('fr-FR'):''];
+      vals.forEach(v=>{ const td=document.createElement('td'); td.textContent=v; tr.appendChild(td); });
+      corps.appendChild(tr);
+    });
+    tab.hidden=false;
+  }catch(e){ msg.textContent=e.message; }
+}
+document.getElementById('voir').onclick=charger;
+cle.addEventListener('keydown',e=>{ if(e.key==='Enter') charger(); });
+if(cle.value) charger();
+</script>
+</body>
+</html>`;
+
 /* ---------- serveur HTTP ---------- */
 const serveur = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -358,6 +443,11 @@ const serveur = http.createServer((req, res) => {
   if(req.url === '/sante'){                      // pour vérifier que ça tourne
     res.writeHead(200, {'Content-Type':'application/json'});
     return res.end(JSON.stringify({ ok:true, joueurs:Object.keys(base.joueurs).length }));
+  }
+
+  if(req.method === 'GET' && req.url.split('?')[0] === '/admin'){
+    res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'});
+    return res.end(PAGE_ADMIN);
   }
 
   // toute requête GET qui n'est pas une route API sert directement le site

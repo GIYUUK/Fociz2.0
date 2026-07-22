@@ -44,6 +44,14 @@ Si `RESEND_API_KEY` est vide, le serveur ne plante pas : les emails ne partent
 juste pas (message dans les logs `docker compose logs -f`), pratique pour tester
 le reste sans compte Resend.
 
+### Voir les comptes créés
+
+Mettre une clé secrète dans `.env` → `ADMIN_KEY` (chaîne longue et aléatoire),
+puis aller sur `https://son-adresse/admin` et entrer cette clé. Affiche pseudo,
+email, arbres, série, minutes, XP et date de création de chaque compte — jamais
+les mots de passe. Tant que `ADMIN_KEY` est vide, la page `/admin` est inerte
+(toute clé est refusée).
+
 ## Mise en ligne
 
 Une seule adresse suffit pour tout (site + comptes), en **HTTPS**. Avec un
@@ -87,6 +95,8 @@ Toute autre requête `GET` (donc `/`) sert directement le fichier `fociz.html`.
 | `/api/sync`               | `jeton`, `arbres`, `serie`, `minutes`    | `joueur`                  |
 | `/api/ami`                | `jeton`, `action` (`ajouter`/`retirer`), `pseudo` | `amis`           |
 | `/api/classement`         | `jeton`                                  | `classement`              |
+| `/api/adminComptes`       | `cle` (= `ADMIN_KEY`)                    | `joueurs` (liste des comptes) |
+| `GET /admin`              | —                                         | page de consultation des comptes |
 | `/sante`                  | —                                         | état du serveur           |
 
 `ami` et `classement` restent dans le serveur mais ne sont plus appelées par
