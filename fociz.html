@@ -283,6 +283,9 @@
     <h4>Ton chemin</h4>
     <div id="path"></div>
 
+    <h4>Boutique · contre XP</h4>
+    <div class="skins" id="boutique"></div>
+
     <button class="linky" id="closeProg" style="margin-top:18px">Fermer</button>
   </div>
 </div>
@@ -489,10 +492,30 @@ const SKINS=[
   bark:['#3A5568','#46647A','#54748C','#6485A0','#7697B4'],
   feuilles:['#A8E0F0','#BCE9F5','#D0F0FA','#E4F8FD','#F5FDFF'],
   ciel:['#DCEFF7','#BFDCEA'],terre:'#8CA7B8',herbe:'#A0C4D4',
-  forme:{rx:.55,ry:1.1},ecart:.9,longueur:1.1,fleur:'#FFFFFF'}
+  forme:{rx:.55,ry:1.1},ecart:.9,longueur:1.1,fleur:'#FFFFFF'},
+
+ {id:'vigne',nom:'Vigne',ico:'🍇',boutique:true,prix:150,need:{},
+  bark:['#5C4A32','#6E5A3E','#80694A','#927856','#A48762'],
+  feuilles:['#4C7A32','#5C8F3E','#6EA34C','#82B85E','#98CC72'],
+  ciel:['#F0E8D8','#E0D4B8'],terre:'#B79A6E',herbe:'#8FAE5C',
+  forme:{rx:.5,ry:1.3},ecart:.85,longueur:1.15,fleur:'#6B4C9E'},
+
+ {id:'licorne',nom:'Arbre licorne',ico:'🦄',boutique:true,prix:300,need:{},
+  bark:['#C89AC4','#D6ACD2','#E4BEDF','#F0D0EC','#FBE2F7'],
+  feuilles:['#FFB3D9','#FFC9E5','#C9B3FF','#B3E5FF','#B3FFD9'],
+  ciel:['#FFF0FA','#F0E6FF'],terre:'#E0C4E8',herbe:'#C9E8D4',
+  forme:{rx:.85,ry:.85},ecart:1.1,longueur:1,fleur:'#FFFFFF'},
+
+ {id:'cosmique',nom:'Arbre cosmique',ico:'🌌',boutique:true,prix:600,need:{},
+  bark:['#1A1435','#241C4A','#2E2560','#3A2E76','#46378C'],
+  feuilles:['#5B4FE8','#7B6FF0','#9B8FF8','#BBAFFF','#DBCFFF'],
+  ciel:['#0A0A2A','#1A1245'],terre:'#2A2050',herbe:'#3A2E5A',
+  forme:{rx:.65,ry:1.05},ecart:1,longueur:1.1,fleur:'#FFE79A'}
 ];
 const skinById=id=>SKINS.find(s=>s.id===id)||SKINS[0];
 function debloque(s){
+  if(stats.achetes && stats.achetes.includes(s.id)) return true;
+  if(s.boutique) return false;
   if(!s.need.arbres&&!s.need.serie) return true;
   if(s.need.arbres) return stats.sessions>=s.need.arbres;
   if(s.need.serie)  return stats.streak>=s.need.serie;
@@ -501,7 +524,7 @@ function debloque(s){
 const besoinTexte=s=>s.need.arbres?s.need.arbres+' arbres':'série '+s.need.serie+' j';
 
 /* ================= données ================= */
-let stats={streak:0,lastDay:null,todayMin:0,totalMin:0,sessions:0,skin:'chene',xp:0};
+let stats={streak:0,lastDay:null,todayMin:0,totalMin:0,sessions:0,skin:'chene',xp:0,achetes:[]};
 let profile={name:null,avatar:'🌱',email:null};
 let minutes=45, session=null, awaySince=null;
 const GRACE=10000;
@@ -557,7 +580,7 @@ async function save(){
 async function publier(){
   if(!profile.name || !(API && jeton)) return;
   try{ await api('sync',{jeton, arbres:stats.sessions, serie:stats.streak,
-                         minutes:stats.totalMin, tete:profile.avatar, xp:stats.xp||0}); }
+                         minutes:stats.totalMin, tete:profile.avatar, xp:stats.xp||0, achetes:stats.achetes||[]}); }
   catch(e){ /* hors ligne : on réessaiera à la prochaine séance */ }
 }
 
@@ -576,7 +599,7 @@ function render(){
   const a=document.getElementById('avatarBtn');
   a.textContent=profile.name?profile.avatar:'👤';
   a.title=profile.name||'Crée ton compte';
-  drawSkins(); drawPath();
+  drawSkins(); drawPath(); drawBoutique();
 }
 
 /* ================= l'arbre ================= */
@@ -725,7 +748,7 @@ function wilt(){
 /* ================= grille des arbres gagnés ================= */
 function drawSkins(){
   const box=document.getElementById('skins'); box.innerHTML='';
-  SKINS.forEach(S=>{
+  SKINS.filter(S=>!S.boutique||debloque(S)).forEach(S=>{
     const ok=debloque(S);
     const b=document.createElement('button');
     b.className='skin'+(ok?'':' locked');
@@ -747,12 +770,47 @@ function drawSkins(){
   });
 }
 
+/* ================= boutique (contre XP) ================= */
+function drawBoutique(){
+  const box=document.getElementById('boutique'); if(!box) return;
+  box.innerHTML='';
+  SKINS.filter(S=>S.boutique).forEach(S=>{
+    const possede=debloque(S);
+    const b=document.createElement('button');
+    b.className='skin'+(possede?'':' locked');
+    b.setAttribute('aria-pressed', stats.skin===S.id?'true':'false');
+    const art = S.img
+      ? `<img class="art" src="${S.img}" alt="">`
+      : `<div class="art" style="background:linear-gradient(180deg,${S.ciel[0]},${S.ciel[1]});display:flex;align-items:center;justify-content:center;font-size:22px">${S.ico}</div>`;
+    b.innerHTML=`${art}
+      <b>${S.nom}</b><em>${possede?'✓ possédé':'✨ '+S.prix+' XP'}</em>`;
+    b.onclick=()=>{
+      if(session) return;
+      if(possede){
+        stats.skin=S.id; save(); render(); buildTree(11); draw(APERCU);
+        say('Arbre choisi : '+S.nom); setTimeout(hush,2000);
+        return;
+      }
+      if((stats.xp||0) < S.prix){
+        say('Pas assez de XP pour '+S.nom+'.',true); setTimeout(hush,2200);
+        return;
+      }
+      stats.xp -= S.prix;
+      stats.achetes = stats.achetes||[];
+      stats.achetes.push(S.id);
+      save(); render();
+      say('Débloqué : '+S.nom+' '+S.ico); setTimeout(hush,2400);
+    };
+    box.appendChild(b);
+  });
+}
+
 /* ================= chemin ================= */
 const cleTri = S => S.need.arbres!=null ? S.need.arbres : (S.need.serie!=null ? S.need.serie*2.5 : 0);
 
 function drawPath(){
   const el=document.getElementById('path'); el.innerHTML='';
-  const cibles = SKINS.filter(S=>S.id!=='chene').slice().sort((a,b)=>cleTri(a)-cleTri(b));
+  const cibles = SKINS.filter(S=>S.id!=='chene'&&!S.boutique).slice().sort((a,b)=>cleTri(a)-cleTri(b));
   const premierVerrouille = cibles.findIndex(S=>!debloque(S));
 
   cibles.forEach((S,i)=>{
@@ -866,6 +924,7 @@ function fail(msg){
   wilt(); reset(true);
   say(msg,true); subEl.textContent='Séance non comptée.';
   setClock(minutes*60000); clockEl.classList.remove('paused');
+  setTimeout(hush,4000);
 }
 function reset(failed){
   goBtn.hidden=false; stopBtn.hidden=true;
@@ -965,6 +1024,7 @@ document.getElementById('loginAcc').onclick=async()=>{
     stats.streak  =Math.max(stats.streak,   r.joueur.serie||0);
     stats.totalMin=Math.max(stats.totalMin, r.joueur.minutes||0);
     stats.xp = r.joueur.xp||0;
+    stats.achetes = Array.from(new Set([...(stats.achetes||[]), ...(r.joueur.achetes||[])]));
   }catch(e){ direCompte(e.message,'err'); return; }
   save(); render(); veil.classList.remove('open');
   say('Content de te revoir'); setTimeout(hush,2200);
@@ -1014,6 +1074,7 @@ document.getElementById('resetValider').onclick=async()=>{
     stats.streak  =Math.max(stats.streak,   r.joueur.serie||0);
     stats.totalMin=Math.max(stats.totalMin, r.joueur.minutes||0);
     stats.xp = r.joueur.xp||0;
+    stats.achetes = Array.from(new Set([...(stats.achetes||[]), ...(r.joueur.achetes||[])]));
     save(); render();
     veilReset.classList.remove('open');
     history.replaceState(null,'',location.pathname);   // enlève ?reset=... de l'adresse
