@@ -924,7 +924,10 @@ function fail(msg){
   wilt(); reset(true);
   say(msg,true); subEl.textContent='Séance non comptée.';
   setClock(minutes*60000); clockEl.classList.remove('paused');
-  setTimeout(hush,4000);
+  setTimeout(()=>{
+    hush();
+    if(!session){ plot.classList.remove('wilting'); buildTree(11); draw(APERCU); }
+  }, 4000);
 }
 function reset(failed){
   goBtn.hidden=false; stopBtn.hidden=true;
