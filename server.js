@@ -127,6 +127,18 @@ setInterval(() => {                                        // ménage : plus vu 
   for(const id in presences){ if(presences[id].vu < seuil) delete presences[id]; }
 }, 60*1000);
 
+/* ---------- limite de tentatives de connexion (anti brute-force) ---------- */
+const tentativesConnexion = {};   // 'ip|identifiant' -> { echecs, depuis }
+const MAX_ECHECS = 6, FENETRE_BLOCAGE = 10*60*1000;
+setInterval(() => {
+  const seuil = Date.now() - 30*60*1000;
+  for(const k in tentativesConnexion){ if(tentativesConnexion[k].depuis < seuil) delete tentativesConnexion[k]; }
+}, 10*60*1000);
+
+function ipDe(req){
+  return (req.headers['x-forwarded-for']||'').split(',')[0].trim() || (req.socket && req.socket.remoteAddress) || 'inconnu';
+}
+
 /* ---------- routes ---------- */
 const routes = {
 
@@ -255,11 +267,20 @@ const routes = {
     return { jeton, joueur: fiche(base.joueurs[k]) };
   },
 
-  async connexion({ pseudo, mdp }){
+  async connexion({ pseudo, mdp }, req){
     const identifiant = String(pseudo||'').trim();
+    const cleLimite = ipDe(req)+'|'+identifiant.toLowerCase();
+    const maintenant = Date.now();
+    const t = tentativesConnexion[cleLimite];
+    if(t && t.echecs>=MAX_ECHECS && maintenant-t.depuis<FENETRE_BLOCAGE){
+      throw 'Trop de tentatives. Réessaie dans quelques minutes.';
+    }
     const j = base.joueurs[cle(identifiant)] || parEmail(identifiant);
-    if(!j) throw 'Compte inconnu.';
-    if(hacher(String(mdp||''), j.sel) !== j.hash) throw 'Mot de passe incorrect.';
+    if(!j || hacher(String(mdp||''), j.sel) !== j.hash){
+      tentativesConnexion[cleLimite] = { echecs:(t?t.echecs:0)+1, depuis:(t?t.depuis:maintenant) };
+      throw j ? 'Mot de passe incorrect.' : 'Compte inconnu.';
+    }
+    delete tentativesConnexion[cleLimite];
     const jeton = nouveauJeton();
     j.jetons = [...(j.jetons||[]).slice(-4), jeton];   // 5 appareils maximum
     enregistrer();
@@ -476,7 +497,7 @@ const serveur = http.createServer((req, res) => {
   req.on('end', async () => {
     try{
       const donnees = corps ? JSON.parse(corps) : {};
-      const reponse = await routes[nom](donnees);
+      const reponse = await routes[nom](donnees, req);
       res.writeHead(200, {'Content-Type':'application/json'});
       res.end(JSON.stringify(reponse));
     }catch(e){
