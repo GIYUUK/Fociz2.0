@@ -93,15 +93,9 @@ Toute autre requête `GET` (donc `/`) sert directement le fichier `fociz.html`.
 | `/api/motDePasseOublie`   | `email`                                  | `ok`                      |
 | `/api/reinitialiser`      | `token`, `mdp`                           | `jeton`, `joueur`         |
 | `/api/sync`               | `jeton`, `arbres`, `serie`, `minutes`    | `joueur`                  |
-| `/api/ami`                | `jeton`, `action` (`ajouter`/`retirer`), `pseudo` | `amis`           |
-| `/api/classement`         | `jeton`                                  | `classement`              |
 | `/api/adminComptes`       | `cle` (= `ADMIN_KEY`)                    | `joueurs` (liste des comptes) |
 | `GET /admin`              | —                                         | page de consultation des comptes |
 | `/sante`                  | —                                         | état du serveur           |
-
-`ami` et `classement` restent dans le serveur mais ne sont plus appelées par
-le site depuis que la fonctionnalité "amis" a été retirée de l'interface —
-elles ne gênent en rien, elles ne servent juste plus.
 
 ## Sécurité — ce qui est fait et ce qui ne l'est pas
 
