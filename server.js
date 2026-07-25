@@ -43,6 +43,7 @@ charger();
 
 /* ---------- envoi d'email (via Resend, aucune dépendance à installer) ---------- */
 const emailValide = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e||'').trim());
+const pseudoValide = p => /^[a-zA-Z0-9À-ÿ _-]+$/.test(String(p||''));
 
 async function envoyerEmail(destinataire, sujet, html){
   if(!RESEND_API_KEY){
@@ -209,6 +210,7 @@ const routes = {
       pseudo = String(pseudo).trim();
       if(pseudo.length < 3)  throw 'Pseudo trop court (3 caractères minimum).';
       if(pseudo.length > 16) throw 'Pseudo trop long (16 caractères maximum).';
+      if(!pseudoValide(pseudo)) throw 'Le pseudo ne peut contenir que lettres, chiffres, espaces, - et _.';
       const nouvelleCle = cle(pseudo);
       if(!nouvelleCle) throw 'Pseudo invalide.';
       if(nouvelleCle !== ancienneCle){
@@ -250,6 +252,7 @@ const routes = {
     email  = String(email||'').trim();
     if(pseudo.length < 3)  throw 'Pseudo trop court (3 caractères minimum).';
     if(pseudo.length > 16) throw 'Pseudo trop long (16 caractères maximum).';
+    if(!pseudoValide(pseudo)) throw 'Le pseudo ne peut contenir que lettres, chiffres, espaces, - et _.';
     if(!emailValide(email)) throw 'Adresse email invalide.';
     if(String(mdp||'').length < 6) throw 'Mot de passe trop court (6 caractères minimum).';
     const k = cle(pseudo);
@@ -343,24 +346,6 @@ const routes = {
     return { joueur: fiche(j) };
   },
 
-  async ami({ jeton, action, pseudo }){
-    const j = parJeton(jeton);
-    if(!j) throw 'Session expirée, reconnecte-toi.';
-    const k = cle(pseudo||'');
-    if(!k) throw 'Pseudo invalide.';
-    if(k === cle(j.pseudo)) throw "C'est toi, ça.";
-    j.amis = j.amis || [];
-    if(action === 'retirer'){
-      j.amis = j.amis.filter(a => cle(a) !== k);
-    }else{
-      const cible = base.joueurs[k];
-      if(!cible) throw 'Aucun joueur avec ce pseudo.';
-      if(!j.amis.some(a => cle(a) === k)) j.amis.push(cible.pseudo);
-    }
-    enregistrer();
-    return { amis: j.amis };
-  },
-
   async adminComptes({ cle }){
     if(!cleAdminValide(cle)) throw 'Accès refusé.';
     const joueurs = Object.values(base.joueurs).map(j => ({
@@ -370,18 +355,6 @@ const routes = {
     }));
     joueurs.sort((a,b) => (b.cree||0) - (a.cree||0));
     return { joueurs };
-  },
-
-  async classement({ jeton }){
-    const j = parJeton(jeton);
-    if(!j) throw 'Session expirée, reconnecte-toi.';
-    const liste = [ { ...fiche(j), moi:true } ];
-    for(const a of (j.amis||[])){
-      const ami = base.joueurs[cle(a)];
-      if(ami) liste.push({ ...fiche(ami), moi:false });
-    }
-    liste.sort((x,y) => y.arbres - x.arbres || y.serie - x.serie || y.minutes - x.minutes);
-    return { classement: liste };
   }
 };
 
@@ -455,7 +428,7 @@ if(cle.value) charger();
 
 /* ---------- serveur HTTP ---------- */
 const serveur = http.createServer((req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', FRONT_URL || '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
 
