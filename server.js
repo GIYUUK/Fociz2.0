@@ -22,8 +22,9 @@ function charger(){
   try{
     base = JSON.parse(fs.readFileSync(FICHIER, 'utf8'));
     if(!base.joueurs) base.joueurs = {};
+    if(!base.visites) base.visites = {};
   }catch(e){
-    base = { joueurs: {} };
+    base = { joueurs: {}, visites: {} };
   }
 }
 let enregistrementPrevu = false;
@@ -40,6 +41,18 @@ function enregistrer(){
   }, 400);
 }
 charger();
+
+/* ---------- compteur de visites (simple, par jour, pas de vraie analytics) ---------- */
+function jourDe(date){ return date.toISOString().slice(0,10); }   // 'AAAA-MM-JJ'
+function compterVisite(){
+  const jour = jourDe(new Date());
+  base.visites[jour] = (base.visites[jour]||0) + 1;
+  enregistrer();
+}
+function ressembleFichierStatique(url){
+  const chemin = (url||'').split('?')[0];
+  return /\.[a-zA-Z0-9]+$/.test(chemin) && chemin !== '/index.html';
+}
 
 /* ---------- envoi d'email (via Resend, aucune dépendance à installer) ---------- */
 const emailValide = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e||'').trim());
@@ -354,7 +367,7 @@ const routes = {
       achetes: j.achetes||[], amis: j.amis||[], cree: j.cree||null
     }));
     joueurs.sort((a,b) => (b.cree||0) - (a.cree||0));
-    return { joueurs };
+    return { joueurs, visites: base.visites };
   }
 };
 
@@ -446,6 +459,7 @@ const serveur = http.createServer((req, res) => {
 
   // toute requête GET qui n'est pas une route API sert directement le site
   if(req.method === 'GET' && !req.url.startsWith('/api/')){
+    if(!ressembleFichierStatique(req.url)) compterVisite();
     try{
       const html = fs.readFileSync(SITE_FICHIER, 'utf8');
       res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'});
