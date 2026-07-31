@@ -24,8 +24,9 @@ function charger(){
     if(!base.joueurs) base.joueurs = {};
     if(!base.visites) base.visites = {};
     if(!base.visitesPays) base.visitesPays = {};
+    if(!base.visiteursUniques) base.visiteursUniques = {};
   }catch(e){
-    base = { joueurs: {}, visites: {}, visitesPays: {} };
+    base = { joueurs: {}, visites: {}, visitesPays: {}, visiteursUniques: {} };
   }
 }
 let enregistrementPrevu = false;
@@ -79,6 +80,24 @@ function compterVisitePays(code){
   base.visitesPays[jour][code] = (base.visitesPays[jour][code]||0) + 1;
   enregistrer();
 }
+
+/* ---------- visiteurs uniques (1 par IP et par jour, pas de vraie analytics) ---------- */
+const ipsVusParJour = {};   // jour -> Set(IP hachée), en mémoire seulement (repart à zéro au redémarrage)
+function hacherIp(ip){ return crypto.createHash('sha256').update(ip).digest('hex').slice(0,16); }
+function compterVisiteUnique(ip){
+  if(ipPrivee(ip)) return;
+  const jour = jourDe(new Date());
+  if(!ipsVusParJour[jour]) ipsVusParJour[jour] = new Set();
+  const h = hacherIp(ip);
+  if(ipsVusParJour[jour].has(h)) return;
+  ipsVusParJour[jour].add(h);
+  base.visiteursUniques[jour] = (base.visiteursUniques[jour]||0) + 1;
+  enregistrer();
+}
+setInterval(() => {                                        // ménage : ne garde que le jour en cours
+  const aujourdhui = jourDe(new Date());
+  for(const j in ipsVusParJour){ if(j !== aujourdhui) delete ipsVusParJour[j]; }
+}, 60*60*1000);
 
 /* ---------- envoi d'email (via Resend, aucune dépendance à installer) ---------- */
 const emailValide = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e||'').trim());
@@ -393,7 +412,7 @@ const routes = {
       achetes: j.achetes||[], amis: j.amis||[], cree: j.cree||null
     }));
     joueurs.sort((a,b) => (b.cree||0) - (a.cree||0));
-    return { joueurs, visites: base.visites, visitesPays: base.visitesPays };
+    return { joueurs, visites: base.visites, visitesPays: base.visitesPays, visiteursUniques: base.visiteursUniques };
   }
 };
 
@@ -487,7 +506,9 @@ const serveur = http.createServer((req, res) => {
   if(req.method === 'GET' && !req.url.startsWith('/api/')){
     if(!ressembleFichierStatique(req.url)){
       compterVisite();
-      paysDe(ipDe(req)).then(compterVisitePays);
+      const ip = ipDe(req);
+      compterVisiteUnique(ip);
+      paysDe(ip).then(compterVisitePays);
     }
     try{
       const html = fs.readFileSync(SITE_FICHIER, 'utf8');
