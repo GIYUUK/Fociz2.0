@@ -22,8 +22,10 @@ function charger(){
   try{
     base = JSON.parse(fs.readFileSync(FICHIER, 'utf8'));
     if(!base.joueurs) base.joueurs = {};
+    if(!base.visites) base.visites = {};
+    if(!base.visitesPays) base.visitesPays = {};
   }catch(e){
-    base = { joueurs: {} };
+    base = { joueurs: {}, visites: {}, visitesPays: {} };
   }
 }
 let enregistrementPrevu = false;
@@ -40,6 +42,43 @@ function enregistrer(){
   }, 400);
 }
 charger();
+
+/* ---------- compteur de visites (simple, par jour, pas de vraie analytics) ---------- */
+function jourDe(date){ return date.toISOString().slice(0,10); }   // 'AAAA-MM-JJ'
+function compterVisite(){
+  const jour = jourDe(new Date());
+  base.visites[jour] = (base.visites[jour]||0) + 1;
+  enregistrer();
+}
+function ressembleFichierStatique(url){
+  const chemin = (url||'').split('?')[0];
+  return /\.[a-zA-Z0-9]+$/.test(chemin) && chemin !== '/index.html';
+}
+
+/* ---------- pays du visiteur (géolocalisation IP via ip-api.com, gratuit) ---------- */
+const cacheGeo = new Map();   // ip -> code pays (ou null), pour éviter un appel à chaque visite
+function ipPrivee(ip){
+  return !ip || ip==='inconnu' || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1$|f[cd])/.test(ip);
+}
+async function paysDe(ip){
+  if(ipPrivee(ip)) return null;
+  if(cacheGeo.has(ip)) return cacheGeo.get(ip);
+  try{
+    const r = await fetch('http://ip-api.com/json/'+encodeURIComponent(ip)+'?fields=status,countryCode',
+      { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+    const code = (d.status === 'success' && d.countryCode) ? d.countryCode : null;
+    cacheGeo.set(ip, code);
+    return code;
+  }catch(e){ return null; }
+}
+function compterVisitePays(code){
+  if(!code) return;
+  const jour = jourDe(new Date());
+  if(!base.visitesPays[jour]) base.visitesPays[jour] = {};
+  base.visitesPays[jour][code] = (base.visitesPays[jour][code]||0) + 1;
+  enregistrer();
+}
 
 /* ---------- envoi d'email (via Resend, aucune dépendance à installer) ---------- */
 const emailValide = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e||'').trim());
@@ -354,7 +393,7 @@ const routes = {
       achetes: j.achetes||[], amis: j.amis||[], cree: j.cree||null
     }));
     joueurs.sort((a,b) => (b.cree||0) - (a.cree||0));
-    return { joueurs };
+    return { joueurs, visites: base.visites, visitesPays: base.visitesPays };
   }
 };
 
@@ -446,6 +485,10 @@ const serveur = http.createServer((req, res) => {
 
   // toute requête GET qui n'est pas une route API sert directement le site
   if(req.method === 'GET' && !req.url.startsWith('/api/')){
+    if(!ressembleFichierStatique(req.url)){
+      compterVisite();
+      paysDe(ipDe(req)).then(compterVisitePays);
+    }
     try{
       const html = fs.readFileSync(SITE_FICHIER, 'utf8');
       res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'});
