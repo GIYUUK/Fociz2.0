@@ -8,6 +8,8 @@ services:
     volumes:
       - ./data:/data
       - ./fociz.html:/app/fociz.html:ro
+      - ./manifest.json:/app/manifest.json:ro
+      - ./sw.js:/app/sw.js:ro
     environment:
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - MAIL_FROM=${MAIL_FROM:-Fociz <onboarding@resend.dev>}

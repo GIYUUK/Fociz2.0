@@ -398,6 +398,8 @@ const routes = {
 };
 
 const SITE_FICHIER = process.env.SITE_FILE || path.join(__dirname, 'fociz.html');
+const MANIFEST_FICHIER = path.join(__dirname, 'manifest.json');
+const SW_FICHIER = path.join(__dirname, 'sw.js');
 
 /* ---------- page /admin (liste des comptes, protégée par ADMIN_KEY) ---------- */
 const PAGE_ADMIN = `<!DOCTYPE html>
@@ -481,6 +483,24 @@ const serveur = http.createServer((req, res) => {
   if(req.method === 'GET' && req.url.split('?')[0] === '/admin'){
     res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'});
     return res.end(PAGE_ADMIN);
+  }
+
+  if(req.method === 'GET' && req.url === '/manifest.json'){
+    try{
+      res.writeHead(200, {'Content-Type':'application/manifest+json; charset=utf-8'});
+      return res.end(fs.readFileSync(MANIFEST_FICHIER, 'utf8'));
+    }catch(e){
+      res.writeHead(404); return res.end();
+    }
+  }
+
+  if(req.method === 'GET' && req.url === '/sw.js'){
+    try{
+      res.writeHead(200, {'Content-Type':'application/javascript; charset=utf-8'});
+      return res.end(fs.readFileSync(SW_FICHIER, 'utf8'));
+    }catch(e){
+      res.writeHead(404); return res.end();
+    }
   }
 
   // toute requête GET qui n'est pas une route API sert directement le site
