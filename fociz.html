@@ -70,7 +70,7 @@
   .code-actif:hover{border-color:var(--leaf)}
 
   .plot{position:relative;border-radius:24px;overflow:hidden;border:1.5px solid var(--line);
-    margin-bottom:22px;transition:filter .9s ease,background .8s ease}
+    margin-bottom:22px;transition:filter .9s ease,background .8s ease;background:var(--card)}
   .plot.wilting{filter:saturate(.3) sepia(.3)}
   .plot svg{display:block;width:100%;height:auto}
   #canopy{transform-box:fill-box;transform-origin:200px 300px}
@@ -646,7 +646,7 @@ async function load(){
   if(stats.lastDay!==today) stats.todayMin=0;
   if(stats.lastDay&&stats.lastDay!==today&&stats.lastDay!==yest) stats.streak=0;
   if(!debloque(skinById(stats.skin))) stats.skin='chene';
-  render(); buildTree(11); draw(APERCU);
+  render(); buildTree(11); draw(APERCU); plot.style.background='';
 }
 async function save(){
   await DB.set('fociz:stats',JSON.stringify(stats));
@@ -1031,7 +1031,7 @@ function fail(msg){
   setClock(minutes*60000); clockEl.classList.remove('paused');
   setTimeout(()=>{
     hush();
-    if(!session){ plot.classList.remove('wilting'); buildTree(11); draw(APERCU); }
+    if(!session){ plot.classList.remove('wilting'); buildTree(11); draw(APERCU); plot.style.background=''; }
   }, 4000);
 }
 function reset(failed){
@@ -1428,7 +1428,7 @@ document.getElementById('themeBtn').onclick=()=>{
 
 /* ================= démarrage ================= */
 setClock(minutes*60000); majRegle();
-buildTree(11); draw(APERCU);
+buildTree(11); draw(APERCU); plot.style.background='';
 load();
 initPresence();
 
